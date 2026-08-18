@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Hero Preview — Word Puzzle</title>
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet" />
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%;
+    background:#fff; color:#000;
+    font-family:'Satoshi', sans-serif;
+    overflow:hidden;
+  }
+
+  .hint {
+    position:fixed;
+    top:24px; left:50%;
+    transform:translateX(-50%);
+    font-size:13px;
+    font-weight:500;
+    color:#999;
+    letter-spacing:0.02em;
+    z-index:10;
+    text-align:center;
+    max-width:520px;
+  }
+
+  .reset-btn {
+    position:fixed;
+    top:20px; right:24px;
+    background:#111;
+    color:#fff;
+    border:none;
+    border-radius:100px;
+    padding:8px 18px;
+    font-family:'Satoshi',sans-serif;
+    font-weight:500;
+    font-size:13px;
+    cursor:pointer;
+    z-index:10;
+    transition: background 0.2s;
+  }
+  .reset-btn:hover { background:#FAA916; color:#111; }
+
+  .hero {
+    position:relative;
+    width:100%; height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+  }
+
+  .hero-inner {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:14px;
+    max-width:834px;
+    padding:0 20px;
+    position:relative;
+  }
+
+  .hero-sub {
+    font-weight:500;
+    font-size:24px;
+    position:relative;
+  }
+
+  .hero-title {
+    font-weight:500;
+    font-size:48px;
+    letter-spacing:-1px;
+    line-height:1.25;
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:0 12px;
+    position:relative;
+  }
+
+  /* Each word */
+  .word {
+    display:inline-block;
+    position:relative;
+    cursor:grab;
+    user-select:none;
+    touch-action:none;
+    transition: transform 0.15s ease-out;
+    will-change: transform, left, top;
+  }
+
+  /* Idle hover wobble — signals interactivity */
+  .word:hover:not(.dragging):not(.solved-word) {
+    animation: wobble 0.45s ease-in-out;
+  }
+
+  @keyframes wobble {
+    0%   { transform: rotate(0deg); }
+    20%  { transform: rotate(-4deg) translateY(-1px); }
+    40%  { transform: rotate(3.5deg) translateY(0px); }
+    60%  { transform: rotate(-2.5deg); }
+    80%  { transform: rotate(1.5deg); }
+    100% { transform: rotate(0deg); }
+  }
+
+  /* While actively dragging */
+  .word.dragging {
+    cursor:grabbing;
+    color: #FAA916;
+    z-index: 50;
+    transition: none;
+  }
+
+  .word.displaced { z-index: 20; }
+
+  /* Word that has been accepted into the slot */
+  .word.solved-word {
+    color: #FAA916;
+    cursor: default;
+    animation: none;
+  }
+
+  /* Invisible spacer left behind in the text flow */
+  .word-placeholder {
+    display: inline-block;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* ── PUZZLE SLOT ─────────────────────────────────────────── */
+  .slot-wrap {
+    margin-top: 26px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .slot {
+    min-width: 220px;
+    min-height: 44px;
+    border: 1.5px dashed #ccc;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 8px 20px;
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: -0.3px;
+    transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    background: #fafafa;
+  }
+
+  .slot.hovering {
+    border-color: #FAA916;
+    background: #FFF7E8;
+  }
+
+  .slot.shake {
+    animation: shake 0.4s ease;
+    border-color: #E05A3A;
+    background: #FDEEEA;
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
+
+  .slot.solved {
+    border: 1.5px solid #FAA916;
+    background: #FFF7E8;
+    box-shadow: 0 0 0 4px rgba(250,169,22,0.15);
+    animation: pop 0.4s ease;
+  }
+
+  @keyframes pop {
+    0% { transform: scale(0.96); }
+    60% { transform: scale(1.02); }
+    100% { transform: scale(1); }
+  }
+
+  .slot-placeholder-text {
+    font-size: 13px;
+    font-weight: 500;
+    color: #bbb;
+    letter-spacing: 0.02em;
+  }
+
+  .slot-caption {
+    font-size: 12px;
+    font-weight: 500;
+    color: #bbb;
+    letter-spacing: 0.03em;
+    min-height: 16px;
+    transition: color 0.2s;
+  }
+  .slot-caption.solved-caption {
+    color: #FAA916;
+  }
+
+</style>
+</head>
+<body>
+
+  <div class="hint">Hover words to see them wobble · Drag them into the box below to uncover a hidden tagline</div>
+  <button class="reset-btn" onclick="resetAll()">Reset</button>
+
+  <div class="hero">
+    <div class="hero-inner">
+      <div class="hero-sub">Adrian Nemes - Budapest</div>
+      <h1 class="hero-title" id="title"></h1>
+
+      <div class="slot-wrap">
+        <div class="slot" id="slot">
+          <span class="slot-placeholder-text" id="slotPlaceholder">drop word here</span>
+        </div>
+        <div class="slot-caption" id="slotCaption"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const text = "I strive to channel my passion for design into bringing new ideas to life and creating better experiences.";
+const words = text.split(" ");
+const titleEl = document.getElementById('title');
+const slotEl = document.getElementById('slot');
+const slotPlaceholder = document.getElementById('slotPlaceholder');
+const slotCaption = document.getElementById('slotCaption');
+
+// The hidden puzzle answer, in required drop order
+const targetSequence = ["creating", "design", "for", "better", "life"];
+let nextIndex = 0;
+let solved = false;
+
+words.forEach((w, i) => {
+  const span = document.createElement('span');
+  span.className = 'word';
+  span.textContent = w;
+  span.dataset.index = i;
+  // normalized match key — strip trailing punctuation, lowercase
+  span.dataset.match = w.replace(/[.,]/g, '').toLowerCase();
+  titleEl.appendChild(span);
+});
+
+let dragEl = null;
+let dragPointerId = null;
+let offsetX = 0, offsetY = 0;
+let startLeft = 0, startTop = 0;
+let hasMoved = false;
+
+// Pulls a word out of the normal text flow and leaves a same-sized
+// invisible placeholder behind so the rest of the sentence doesn't reflow.
+function detachWord(word) {
+  if (word.classList.contains('displaced')) return;
+
+  const containerRect = titleEl.getBoundingClientRect();
+  const wordRect = word.getBoundingClientRect();
+  const width = word.offsetWidth;
+  const height = word.offsetHeight;
+
+  const placeholder = document.createElement('span');
+  placeholder.className = 'word-placeholder';
+  placeholder.style.width = width + 'px';
+  placeholder.style.height = height + 'px';
+  placeholder.setAttribute('aria-hidden', 'true');
+
+  titleEl.insertBefore(placeholder, word);
+  word.__placeholder = placeholder;
+
+  word.style.position = 'absolute';
+  word.style.left = (wordRect.left - containerRect.left) + 'px';
+  word.style.top = (wordRect.top - containerRect.top) + 'px';
+  word.style.width = width + 'px';
+  word.classList.add('displaced');
+}
+
+// Puts a word back exactly where its placeholder sits, then removes the
+// placeholder — restoring the word to normal flex flow.
+function revertWord(word) {
+  const placeholder = word.__placeholder;
+  if (!placeholder) return;
+  placeholder.replaceWith(word);
+  word.__placeholder = null;
+  word.classList.remove('displaced', 'solved-word', 'dragging');
+  word.style.position = '';
+  word.style.left = '';
+  word.style.top = '';
+  word.style.width = '';
+  word.style.transform = '';
+  word.style.transition = '';
+}
+
+function rectsOverlap(a, b) {
+  return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+}
+
+function updateSlotVisual() {
+  slotPlaceholder.style.display = nextIndex === 0 ? 'inline' : 'none';
+}
+
+function rejectWord(word) {
+  slotEl.classList.add('shake');
+  setTimeout(() => slotEl.classList.remove('shake'), 400);
+
+  const containerRect = titleEl.getBoundingClientRect();
+  const placeholder = word.__placeholder;
+  if (!placeholder) return;
+  const pRect = placeholder.getBoundingClientRect();
+
+  word.style.transition = 'left 0.35s cubic-bezier(0.34,1.56,0.64,1), top 0.35s cubic-bezier(0.34,1.56,0.64,1)';
+  word.style.left = (pRect.left - containerRect.left) + 'px';
+  word.style.top = (pRect.top - containerRect.top) + 'px';
+
+  word.addEventListener('transitionend', function handler() {
+    word.removeEventListener('transitionend', handler);
+    revertWord(word);
+  }, { once: true });
+}
+
+function acceptWord(word) {
+  const slotRect = slotEl.getBoundingClientRect();
+  const containerRect = titleEl.getBoundingClientRect();
+
+  word.style.transition = 'left 0.25s ease, top 0.25s ease, transform 0.2s ease';
+  word.style.left = (slotRect.left + slotRect.width / 2 - containerRect.left) + 'px';
+  word.style.top = (slotRect.top - containerRect.top) + 'px';
+  word.style.transform = 'scale(0.9)';
+
+  word.addEventListener('transitionend', function handler() {
+    word.removeEventListener('transitionend', handler);
+    word.style.transition = '';
+    word.style.transform = '';
+    word.classList.remove('displaced', 'dragging');
+    word.style.position = '';
+    word.style.left = '';
+    word.style.top = '';
+    word.style.width = '';
+    word.classList.add('solved-word');
+
+    // Insert before the caption-triggering placeholder text so word order
+    // in the slot always matches drop order (which matches target order)
+    slotEl.insertBefore(word, slotPlaceholder);
+
+    nextIndex++;
+    updateSlotVisual();
+
+    if (nextIndex === targetSequence.length) {
+      solved = true;
+      slotEl.classList.add('solved');
+      slotCaption.textContent = '✓ Tagline unlocked';
+      slotCaption.classList.add('solved-caption');
+    }
+  }, { once: true });
+}
+
+document.querySelectorAll('.word').forEach(word => {
+  word.addEventListener('pointerdown', (e) => {
+    if (solved || word.classList.contains('solved-word')) return;
+    dragEl = word;
+    dragPointerId = e.pointerId;
+    word.setPointerCapture(e.pointerId);
+
+    detachWord(word);
+
+    startLeft = parseFloat(word.style.left);
+    startTop = parseFloat(word.style.top);
+    offsetX = e.clientX;
+    offsetY = e.clientY;
+    hasMoved = false;
+
+    word.classList.add('dragging');
+    e.preventDefault();
+  });
+
+  word.addEventListener('pointermove', (e) => {
+    if (dragEl !== word || e.pointerId !== dragPointerId) return;
+    const dx = e.clientX - offsetX;
+    const dy = e.clientY - offsetY;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) hasMoved = true;
+    word.style.left = (startLeft + dx) + 'px';
+    word.style.top = (startTop + dy) + 'px';
+
+    // Live feedback: highlight slot while a word hovers over it
+    const wordRect = word.getBoundingClientRect();
+    const slotRect = slotEl.getBoundingClientRect();
+    slotEl.classList.toggle('hovering', !solved && rectsOverlap(wordRect, slotRect));
+  });
+
+  function endDrag(e) {
+    if (dragEl !== word || e.pointerId !== dragPointerId) return;
+    word.classList.remove('dragging');
+    slotEl.classList.remove('hovering');
+
+    const wordRect = word.getBoundingClientRect();
+    const slotRect = slotEl.getBoundingClientRect();
+    const overlaps = rectsOverlap(wordRect, slotRect);
+
+    if (overlaps && !solved) {
+      const expected = targetSequence[nextIndex];
+      if (word.dataset.match === expected) {
+        acceptWord(word);
+      } else {
+        rejectWord(word);
+      }
+    } else if (hasMoved) {
+      const tilt = (Math.random() - 0.5) * 14;
+      word.style.transform = `rotate(${tilt}deg)`;
+    }
+
+    dragEl = null;
+    dragPointerId = null;
+  }
+  word.addEventListener('pointerup', endDrag);
+  word.addEventListener('pointercancel', endDrag);
+});
+
+function resetAll() {
+  // Return any words currently sitting in the slot back to the sentence
+  document.querySelectorAll('.word.solved-word').forEach(revertWord);
+  // Return any words dragged loose elsewhere on the page
+  document.querySelectorAll('.word.displaced').forEach(revertWord);
+
+  nextIndex = 0;
+  solved = false;
+  slotEl.classList.remove('solved', 'hovering', 'shake');
+  slotCaption.textContent = '';
+  slotCaption.classList.remove('solved-caption');
+  updateSlotVisual();
+}
+</script>
+</body>
+</html>
